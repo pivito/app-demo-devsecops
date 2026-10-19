@@ -4,3 +4,6 @@ coverage/
 
 # Security reports
 trivy-report.json
+
+# Security reports
+trivy-report.json
