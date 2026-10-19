@@ -65,6 +65,7 @@ pipeline {
                       .
                 '''
             }
+
             post {
                 always {
                     archiveArtifacts artifacts: 'trivy-report.json',
@@ -72,7 +73,8 @@ pipeline {
                 }
             }
         }
-	        stage('Build Docker Image') {
+
+        stage('Build Docker Image') {
             steps {
                 sh '''
                     set -eu
@@ -110,10 +112,44 @@ pipeline {
                     echo "Imagen aprobada: sin vulnerabilidades HIGH ni CRITICAL"
                 '''
             }
+
             post {
                 always {
                     archiveArtifacts artifacts: 'trivy-image-report.json',
                                      allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Publish Image to GHCR') {
+
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'ghcr-credentials',
+                        usernameVariable: 'GHCR_USER',
+                        passwordVariable: 'GHCR_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set -eu
+                        set +x
+
+                        IMAGE="ghcr.io/pivito/app-demo-devsecops"
+                        TAG="$(git rev-parse --short=12 HEAD)"
+
+                        echo "Publicando imagen ${IMAGE}:${TAG}"
+
+                        skopeo copy \
+                          --src-tls-verify=true \
+                          --dest-tls-verify=true \
+                          --dest-creds "${GHCR_USER}:${GHCR_TOKEN}" \
+                          docker-archive:app-demo-ci.tar \
+                          "docker://${IMAGE}:${TAG}"
+
+                        echo "Imagen publicada correctamente"
+                        echo "${IMAGE}:${TAG}"
+                    '''
                 }
             }
         }
