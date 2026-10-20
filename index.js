@@ -3,7 +3,7 @@ const express = require('express');
 const app = express();
 
 app.get('/', (req, res) => {
-  res.send('Laboratorio DevSecOps funcionando');
+  res.send('Laboratorio DevSecOps v2 - Desplegado con Jenkins y Argo CD - By Miguel Angel');
 });
 
 app.get('/health', (req, res) => {
