@@ -7,7 +7,6 @@ metadata:
   labels:
     app: app-demo
 spec:
-  replicas: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
