@@ -25,7 +25,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: app-demo
-          image: ghcr.io/pivito/app-demo-devsecops:0745e2b1add3
+          image: ghcr.io/pivito/app-demo-devsecops:2c0826e0ebe4
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000
