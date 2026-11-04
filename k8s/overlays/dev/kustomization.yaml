@@ -20,4 +20,4 @@ patches:
         value: 1
       - op: replace
         path: /spec/maxReplicas
-        value: 3
+        value: 4
