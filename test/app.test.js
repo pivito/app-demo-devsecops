@@ -15,3 +15,11 @@ test('La ruta /health está registrada', () => {
 
   assert.equal(route, true);
 });
+
+test('La ruta /version está registrada', () => {
+  const route = app.router.stack.some(
+    layer => layer.route?.path === '/version'
+  );
+
+  assert.equal(route, true);
+});

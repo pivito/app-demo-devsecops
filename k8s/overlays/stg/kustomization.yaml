@@ -25,3 +25,12 @@ patches:
       - op: replace
         path: /spec/maxReplicas
         value: 6
+  - target:
+      kind: Deployment
+      name: app-demo
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: APP_ENV
+            value: staging
