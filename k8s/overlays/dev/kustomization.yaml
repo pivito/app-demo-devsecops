@@ -5,6 +5,9 @@ namespace: app-demo-dev
 
 resources:
   - ../../base
+images:
+  - name: ghcr.io/pivito/app-demo-devsecops
+    newTag: 0745e2b1add3
 
 replicas:
   - name: app-demo
