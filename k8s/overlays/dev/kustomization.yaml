@@ -7,7 +7,7 @@ resources:
   - ../../base
 images:
   - name: ghcr.io/pivito/app-demo-devsecops
-    newTag: 0745e2b1add3
+    digest: sha256:d3d024be23756030986b466c89599c6584ee74cde99269a7bbfbb0b475d73e81
 
 replicas:
   - name: app-demo
