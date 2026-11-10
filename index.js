@@ -59,6 +59,21 @@ app.get('/version', (req, res) => {
   });
 });
 
+// Ruta de diagnóstico habilitada explícitamente
+if (process.env.ENABLE_TEST_ENDPOINTS === 'true') {
+  app.get('/test-error', (req, res) => {
+    req.log.error(
+      { test: true },
+      'Error HTTP 500 generado para validar observabilidad'
+    );
+
+    res.status(500).json({
+      error: 'Simulated internal server error',
+      environment
+    });
+  });
+}
+
 if (require.main === module) {
   app.listen(3000, () => {
     logger.info({ port: 3000 }, 'Servidor iniciado');

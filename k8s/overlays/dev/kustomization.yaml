@@ -33,3 +33,5 @@ patches:
         value:
           - name: APP_ENV
             value: development
+          - name: ENABLE_TEST_ENDPOINTS
+            value: "true"
