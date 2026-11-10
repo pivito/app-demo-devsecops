@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-inspector
+  namespace: postgres-lab
+spec:
+  restartPolicy: Never
+  containers:
+    - name: inspector
+      image: postgres:16
+      command:
+        - sleep
+        - infinity
+      volumeMounts:
+        - name: backups
+          mountPath: /backups
+          readOnly: true
+  volumes:
+    - name: backups
+      persistentVolumeClaim:
+        claimName: postgres-backups-pvc
