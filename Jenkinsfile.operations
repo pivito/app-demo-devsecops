@@ -1,0 +1,199 @@
+
+pipeline {
+    agent any
+
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        skipDefaultCheckout()
+    }
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['CREATE_TEST', 'LIST_TEST', 'DELETE_TEST'],
+            description: 'Operación que ejecutará Jenkins'
+        )
+
+        string(
+            name: 'TEST_NAME',
+            defaultValue: 'test-api',
+            description: 'Nombre del entorno de pruebas'
+        )
+
+        string(
+            name: 'IMAGE',
+            defaultValue: 'ghcr.io/pivito/app-demo-devsecops@sha256:d3334fda944a0966322a4999b20ab081328edac579120e048650c88122ff8472',
+            description: 'Imagen de contenedor que se desplegará'
+        )
+
+        choice(
+            name: 'TTL',
+            choices: ['30m', '1h', '2h', '6h', '12h', '24h'],
+            description: 'Tiempo de vida solicitado (limpieza automática pendiente)'
+        )
+    }
+
+    environment {
+        KUBE_NAMESPACE = 'lab-test-api'
+    }
+
+    stages {
+        stage('Validar parámetros') {
+            steps {
+                script {
+                    if (!(params.TEST_NAME ==~ /[a-z0-9]([-a-z0-9]*[a-z0-9])?/)) {
+                        error('TEST_NAME debe contener letras minúsculas, números o guiones.')
+                    }
+
+                    if (params.TEST_NAME.length() > 40) {
+                        error('TEST_NAME no puede superar 40 caracteres.')
+                    }
+
+                    if (!(params.IMAGE ==~ /ghcr\.io\/pivito\/app-demo-devsecops@sha256:[a-f0-9]{64}/)) {
+                        error('La imagen debe pertenecer al repositorio GHCR autorizado y utilizar un digest SHA256.')
+                    }
+
+                    echo "Acción: ${params.ACTION}"
+                    echo "Entorno: ${params.TEST_NAME}"
+                    echo "TTL solicitado: ${params.TTL}"
+                }
+            }
+        }
+
+        stage('Operaciones Kubernetes') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'kubeconfig-jenkins-operations',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    script {
+                        def deploymentName = "app-${params.TEST_NAME}"
+
+                        if (params.ACTION == 'CREATE_TEST') {
+
+                            def manifest = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${deploymentName}
+  namespace: ${env.KUBE_NAMESPACE}
+  labels:
+    app.kubernetes.io/managed-by: jenkins-operations
+    devsecops.io/test-name: ${params.TEST_NAME}
+  annotations:
+    devsecops.io/ttl: "${params.TTL}"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${deploymentName}
+  template:
+    metadata:
+      labels:
+        app: ${deploymentName}
+    spec:
+      containers:
+        - name: app-demo
+          image: ${params.IMAGE}
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${deploymentName}
+  namespace: ${env.KUBE_NAMESPACE}
+  labels:
+    app.kubernetes.io/managed-by: jenkins-operations
+spec:
+  selector:
+    app: ${deploymentName}
+  ports:
+    - port: 80
+      targetPort: 3000
+"""
+
+                            writeFile file: 'test-manifest.yaml', text: manifest
+
+                            sh '''
+                                kubectl apply -f test-manifest.yaml
+                            '''
+
+                            sh """
+                                kubectl rollout status deployment/${deploymentName} \
+                                  -n ${env.KUBE_NAMESPACE} \
+                                  --timeout=120s
+                            """
+
+                            echo """
+ENTORNO CREADO
+
+Namespace: ${env.KUBE_NAMESPACE}
+Deployment: ${deploymentName}
+Imagen: ${params.IMAGE}
+TTL solicitado: ${params.TTL}
+
+Acceso al contenedor:
+kubectl exec -it -n ${env.KUBE_NAMESPACE} deployment/${deploymentName} -- sh
+
+Acceso desde localhost:
+kubectl port-forward -n ${env.KUBE_NAMESPACE} svc/${deploymentName} 3312:80
+
+URL:
+http://localhost:3312
+
+NOTA: La limpieza automática por TTL aún no está habilitada.
+"""
+                        }
+
+                        if (params.ACTION == 'LIST_TEST') {
+                            sh """
+                                kubectl get deployments,services,pods \
+                                  -n ${env.KUBE_NAMESPACE} \
+                                  -o wide
+                            """
+                        }
+
+                        if (params.ACTION == 'DELETE_TEST') {
+                            sh """
+                                kubectl delete deployment ${deploymentName} \
+                                  -n ${env.KUBE_NAMESPACE} \
+                                  --ignore-not-found=true
+
+                                kubectl delete service ${deploymentName} \
+                                  -n ${env.KUBE_NAMESPACE} \
+                                  --ignore-not-found=true
+                            """
+
+                            echo "Entorno ${params.TEST_NAME} eliminado."
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Operación completada correctamente.'
+        }
+
+        failure {
+            echo 'La operación ha fallado. Revisa la consola de Jenkins.'
+        }
+
+        always {
+            deleteDir()
+        }
+    }
+}
