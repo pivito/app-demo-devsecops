@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: datos-recuperados-pvc
+  namespace: storage-lab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  volumeName: pvc-4759f27a-c38f-41d3-a4b6-89d69fff5e12
+  resources:
+    requests:
+      storage: 1Gi

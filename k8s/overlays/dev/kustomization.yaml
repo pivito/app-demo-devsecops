@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: app-demo-dev
+
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/pivito/app-demo-devsecops
+    digest: sha256:d3334fda944a0966322a4999b20ab081328edac579120e048650c88122ff8472
+
+replicas:
+  - name: app-demo
+    count: 1
+
+patches:
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: app-demo
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 4
+  - target:
+      kind: Deployment
+      name: app-demo
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: APP_ENV
+            value: development
+          - name: ENABLE_TEST_ENDPOINTS
+            value: "true"

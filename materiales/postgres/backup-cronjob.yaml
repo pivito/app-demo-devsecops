@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: postgres-lab
+spec:
+  schedule: "0 2 * * *"
+  timeZone: "Europe/Madrid"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: postgres:16
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-secret
+                      key: POSTGRES_PASSWORD
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  FECHA=$(date -u +%Y%m%dT%H%M%SZ)
+                  ARCHIVO="/backups/laboratorio-${FECHA}.dump"
+
+                  pg_dump \
+                    -h postgres \
+                    -U laboratorio \
+                    -d laboratorio \
+                    -Fc \
+                    -f "$ARCHIVO"
+
+                  pg_restore -l "$ARCHIVO" > /dev/null
+
+                  echo "Backup creado y verificado: $ARCHIVO"
+
+                  find /backups -type f \
+                    -name 'laboratorio-*.dump' \
+                    -mtime +6 -delete
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: postgres-backups-pvc

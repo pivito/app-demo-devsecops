@@ -1,0 +1,31 @@
+FROM jenkins/jenkins:lts-jdk21
+
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       libatomic1 \
+       ca-certificates \
+       git \
+       curl \
+       skopeo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instalar cliente Trivy
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends wget gnupg && \
+    wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+      | gpg --batch --yes --dearmor -o /usr/share/keyrings/trivy.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+      > /etc/apt/sources.list.d/trivy.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends trivy && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copiar el cliente BuildKit desde la imagen oficial
+COPY --from=moby/buildkit:rootless /usr/bin/buildctl /usr/local/bin/buildctl
+
+# Dirección del servidor BuildKit en la red Docker
+ENV BUILDKIT_HOST=tcp://buildkit:1234
+
+USER jenkins
