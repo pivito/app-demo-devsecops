@@ -20,7 +20,7 @@
 16. [Acceso MCP de solo lectura](#16-acceso-mcp-de-solo-lectura)
 17. [Dificultades y soluciones](#17-dificultades-y-soluciones)
 18. [Operación diaria y comprobación final](#18-operación-diaria-y-comprobación-final)
-19. [Ampliaciones pendientes](#19-ampliaciones-pendientes)
+19. [Actualización: Jenkins y entornos efímeros](#19-actualización-jenkins-y-entornos-efímeros)
 20. [Referencias](#20-referencias)
 
 ## 1. Objetivo y alcance
@@ -37,9 +37,9 @@ Aplicación → logs JSON → Alloy → Loki → Grafana
 Kubernetes → Prometheus → Grafana / Alertmanager
 ```
 
-Este manual se ha elaborado el **10 de noviembre de 2026** a partir de los archivos reales de `~/laboratorios/devsecops`, consultas de estado del clúster y el historial disponible. Los comandos de instalación son instrucciones para el lector: no se han reinstalado componentes ni ejecutado ejercicios destructivos al escribir el documento.
+Este manual se elaboró el **10 de noviembre de 2026** y se actualizó el **12 de noviembre de 2026** a partir de los archivos reales de `~/laboratorios/devsecops`, consultas de estado del clúster y el historial disponible. Los comandos de instalación son instrucciones para el lector: no se han reinstalado componentes ni ejecutado ejercicios destructivos al escribir el documento. La última actualización incorpora el pipeline de operaciones de Jenkins y las pruebas del limpiador automático de entornos efímeros; consulta el tema 19.
 
-Se incluyen configuraciones revisadas en [materiales](materiales/). El código de la aplicación se obtiene de GitHub. No se distribuyen contraseñas, tokens, kubeconfigs administrativos, bases de datos ni cachés. Los experimentos antiguos de correo y las copias de manifiestos internos del control plane no forman parte del recorrido de instalación: no hay evidencia suficiente para reproducir su resultado con seguridad. El menú de operaciones de Jenkins y su TTL están diseñados, pero pendientes de implementación.
+Se incluyen configuraciones revisadas en [materiales](materiales/). El código de la aplicación se obtiene de GitHub. No se distribuyen contraseñas, tokens, kubeconfigs administrativos, bases de datos ni cachés. Los experimentos antiguos de correo y las copias de manifiestos internos del control plane no forman parte del recorrido de instalación: no hay evidencia suficiente para reproducir su resultado con seguridad. El menú de operaciones y el limpiador TTL ya tienen implementación; todavía quedan comprobaciones y mejoras indicadas en el tema 19.
 
 ### Estado y versiones observados
 
@@ -737,20 +737,157 @@ docker compose start
 
 No uses `docker compose down -v` ni `kind delete cluster` como rutina para apagar: eliminan recursos y pueden hacerte perder datos. Exporta primero lo que quieras conservar.
 
-## 19. Ampliaciones pendientes
+## 19. Actualización: Jenkins y entornos efímeros
 
-El siguiente desarrollo acordado es un pipeline independiente llamado `app-demo-operations`. **Todavía no está implementado ni debe considerarse funcional.**
+### 19.1 Qué hemos realizado — 12 de noviembre de 2026
 
-- Elegir una imagen publicada, inicialmente por digest.
-- Cambiar DEV mediante un commit de Kustomize; promocionar STG con aprobación.
-- Crear un entorno aislado con nombre propio y devolver comandos de acceso.
-- Elegir TTL de 30 minutos, 1, 2, 6, 12 o 24 horas, con máximo de 24 horas.
-- Guardar expiración y propiedad en metadatos y limpiar periódicamente con un CronJob.
-- Validar nombres, permisos y propiedad antes de borrar cualquier recurso.
+Ya existe un pipeline independiente `app-demo-operations`, definido en `Jenkinsfile.operations`, para crear, listar y eliminar entornos temporales. También se ha desarrollado el limpiador v6, su ConfigMap y sus permisos RBAC declarativos en `k8s/operations/`.
 
-Una revisión cada cinco minutos puede dejar un entorno activo algunos minutos después de caducar, y requiere que el controlador esté funcionando. La limitación de permisos para eliminar namespaces necesita un diseño explícito: un prefijo `lab-` por sí solo no limita RBAC. La implementación deberá resolver estas condiciones antes de habilitar el borrado automático.
+La implementación concreta utiliza **un namespace compartido `lab-test-api`**, con un Deployment y un Service por entorno. No crea ni borra un namespace por prueba, como se había propuesto inicialmente. DEV y STG siguen separados y sus despliegues continúan mediante GitOps.
 
-También quedan fuera de lo verificado la entrega de notificaciones por correo, la restauración de etcd y la reproducción de los experimentos de exposición de métricas del control plane. Los archivos históricos existen en el equipo original, pero no bastan para afirmar una práctica completada.
+| Elemento | Estado comprobado |
+|---|---|
+| Pipeline de operaciones | Acciones `CREATE_TEST`, `LIST_TEST`, `DELETE_TEST` implementadas |
+| Imagen de aplicación | Se introduce por digest del repositorio GHCR autorizado |
+| TTL seleccionable | `30m`, `1h`, `2h`, `6h`, `12h`, `24h` |
+| Limpiador | Script v6 con comprobaciones de propiedad, expiración y cambios concurrentes |
+| Programación | CronJob `ephemeral-cleaner`, cada cinco minutos |
+| Modo activo observado | `DRY_RUN=false`, `suspend=false`, `concurrencyPolicy=Forbid` |
+| Evidencia reciente | Job `ephemeral-cleaner-29908520`, ejecutado el 12/11/2026 a las 20:20 de Madrid, completado en unos tres segundos |
+| Recurso conservado | `app-test-api` omitido por no tener metadatos válidos de caducidad |
+| Prueba anterior de borrado real | Job `ephemeral-cleaner-v4-real`: eliminación solicitada del Service y Deployment caducados `app-test-ttl-03` |
+
+**Estado de publicación al revisar el laboratorio:** `58b55d2` incorpora el pipeline y `cfe488c` la primera limpieza TTL; ambos estaban en GitHub. Los commits `4980171` (v6 y RBAC) y `f2cb6d2` (activación programada) estaban guardados localmente, pero aún pendientes de publicación. Un directorio de trabajo limpio no significa que todos sus commits estén subidos. Esta actualización documental no publica esos dos commits de implementación: para reproducir v6 desde GitHub deberán publicarse previamente.
+
+### 19.2 Utilizar el menú de Jenkins
+
+El agente Jenkins necesita `kubectl`, conectividad con Kubernetes y una credencial de tipo **Secret file** llamada `kubeconfig-jenkins-operations`. Los permisos deben limitarse a los recursos necesarios dentro de `lab-test-api`; el kubeconfig no se guarda en el repositorio. El RBAC del limpiador no sustituye los permisos del operador de Jenkins.
+
+Configura un trabajo Pipeline con el archivo `Jenkinsfile.operations` del repositorio y la rama del laboratorio. El pipeline usa `skipDefaultCheckout()` porque sus operaciones están definidas en el propio archivo. Tras cargar sus parámetros, usa **Build with Parameters**:
+
+| Parámetro | Ejemplo | Significado |
+|---|---|---|
+| `ACTION` | `CREATE_TEST` | Crear, listar o eliminar |
+| `TEST_NAME` | `test-manual-01` | Minúsculas, números y guiones; máximo 40 caracteres |
+| `IMAGE` | `ghcr.io/pivito/app-demo-devsecops@sha256:...` | Digest real de 64 caracteres hexadecimales |
+| `TTL` | `30m` | Tiempo solicitado hasta la caducidad |
+
+El validador actual acepta únicamente imágenes de `ghcr.io/pivito/app-demo-devsecops`. Si utilizas un fork, adapta también esa validación. Para `CREATE_TEST`, Jenkins calcula `devsecops.io/expires-at` en UTC y crea `app-TEST_NAME`. Impide sobrescribir un Deployment o Service que ya exista con ese nombre. El manifiesto actual no declara `imagePullSecrets`: para una imagen privada prepara el acceso en el ServiceAccount del namespace o adapta el manifiesto antes de probar.
+
+Con `TEST_NAME=test-manual-01`, comprueba el resultado desde Ubuntu:
+
+```bash
+kubectl -n lab-test-api get deployment,service,pods -o wide
+kubectl -n lab-test-api get deployment app-test-manual-01 \
+  -o jsonpath='{.metadata.annotations.devsecops\.io/expires-at}{"\n"}'
+kubectl -n lab-test-api port-forward svc/app-test-manual-01 3312:80
+```
+
+Abre http://localhost:3312. Para entrar al contenedor desde otra terminal:
+
+```bash
+kubectl -n lab-test-api exec -it deployment/app-test-manual-01 -- sh
+```
+
+`LIST_TEST` muestra recursos del namespace. `DELETE_TEST` elimina por nombre el Deployment y el Service indicados: el pipeline actual no aplica las mismas comprobaciones de propiedad que el limpiador v6. Utilízalo solo para tus recursos de prueba y no coloques otras aplicaciones en ese namespace.
+
+### 19.3 Cómo funciona la limpieza v6
+
+El CronJob utiliza la imagen local `ephemeral-cleaner:1.0`, monta el script desde `ephemeral-cleaner-script` y se autentica con el ServiceAccount `ephemeral-cleaner`.
+
+1. Busca Deployments con `app.kubernetes.io/managed-by=jenkins-operations`.
+2. Valida el nombre, la etiqueta `devsecops.io/test-name` y la anotación de caducidad UTC.
+3. Conserva los recursos activos, permanentes o sin metadatos válidos.
+4. En modo real prepara y revalida la limpieza del Service y elimina los recursos elegibles con precondiciones de UID y `resourceVersion`.
+5. En una segunda fase recupera Services huérfanos marcados para limpieza, con caducidad válida y Deployment realmente ausente. Esta fase está restringida al patrón `app-test-*`.
+6. Distingue un `404` de errores de comunicación o autorización y termina con error si acumula fallos.
+
+El Role permite `get/list/delete` sobre Deployments y `get/list/patch/delete` sobre Services **solo en `lab-test-api`**. Las etiquetas son comprobaciones adicionales del script; RBAC por sí solo no restringe el borrado a recursos con esas etiquetas. El limpiador no tiene permisos para borrar namespaces ni para operar en STG.
+
+Para seguir la convención reconocida en la recuperación de Services huérfanos, usa nombres de prueba que empiecen por `test-`.
+
+### 19.4 Preparación para reproducir v6 en otro equipo
+
+Este bloque requiere disponer de los commits v6 indicados anteriormente. Primero revisa los archivos; no ejecutes la activación directamente sobre un namespace con recursos que quieras conservar.
+
+```bash
+cd ~/laboratorios/devsecops/app/app-demo
+git log -5 --oneline
+bash -n k8s/operations/cleanup.sh
+docker build -t ephemeral-cleaner:1.0 -f k8s/operations/Dockerfile.cleaner .
+kind load docker-image ephemeral-cleaner:1.0 --name devsecops
+kubectl create namespace lab-test-api --dry-run=client -o yaml | kubectl apply -f -
+```
+
+El Dockerfile del limpiador descarga `kubectl` para Linux **amd64**, versión `1.34.0`; revisa arquitectura y compatibilidad con la versión de tu clúster. Una imagen disponible en Docker no está necesariamente presente en los nodos de kind: por eso se carga explícitamente.
+
+Antes de aplicar el CronJob en un entorno nuevo, edita una copia del manifiesto para empezar con `suspend: true` y `DRY_RUN: "true"`. Aplica el RBAC y la ConfigMap v6, verifica su contenido y realiza una simulación supervisada. El manifiesto original local del 12/11 ya activa el modo real: no debe usarse como simulación sin cambiar esos valores.
+
+Para generar la ConfigMap desde el script, evitando mantener dos versiones distintas:
+
+```bash
+kubectl create configmap ephemeral-cleaner-script \
+  --from-file=cleanup.sh=k8s/operations/cleanup.sh \
+  -n lab-test-api --dry-run=client -o yaml > /tmp/ephemeral-cleaner-configmap.yaml
+kubectl apply --dry-run=server -f k8s/operations/rbac.yaml
+kubectl apply --dry-run=server -f /tmp/ephemeral-cleaner-configmap.yaml
+```
+
+Estos últimos comandos validan en el servidor, pero **no aplican cambios**. Tras las pruebas, la activación requiere declarar `DRY_RUN=false` y `suspend=false` y aplicar el manifiesto revisado. Suspender un CronJob solo impide nuevas ejecuciones programadas: no detiene Jobs ya iniciados.
+
+### 19.5 Consultar el estado y los registros
+
+```bash
+kubectl -n lab-test-api get cronjob ephemeral-cleaner \
+  -o jsonpath='DRY_RUN: {.spec.jobTemplate.spec.template.spec.containers[0].env[?(@.name=="DRY_RUN")].value}{"\n"}SUSPEND: {.spec.suspend}{"\n"}'
+kubectl -n lab-test-api get jobs --sort-by=.metadata.creationTimestamp
+```
+
+Para identificar Jobs programados sin depender de etiquetas opcionales, instala `jq` si falta y consulta el propietario:
+
+```bash
+kubectl -n lab-test-api get jobs -o json | jq -r '
+  .items[]
+  | select(any(.metadata.ownerReferences[]?;
+      .kind == "CronJob" and .name == "ephemeral-cleaner"))
+  | [.metadata.name, (.status.succeeded // 0), (.status.failed // 0)]
+  | @tsv'
+```
+
+Copia un nombre real de esa salida y sustituye `NOMBRE_REAL_DEL_JOB`:
+
+```bash
+kubectl -n lab-test-api logs job/NOMBRE_REAL_DEL_JOB
+kubectl -n lab-test-api describe job NOMBRE_REAL_DEL_JOB
+```
+
+Los Jobs recientes terminaron correctamente. El Job fallido `ephemeral-cleaner-29905445` corresponde a una ejecución antigua y no demuestra que la configuración actual esté fallando. El historial limitado del CronJob puede eliminar Jobs y sus logs anteriores.
+
+### 19.6 Dificultades encontradas y cómo las resolvimos
+
+| Dificultad observada | Resolución |
+|---|---|
+| Consulta por `batch.kubernetes.io/cronjob-name` sin resultados | Identificar Jobs mediante `metadata.ownerReferences`; esa etiqueta no estaba presente. |
+| `logs job/NOMBRE_DEL_JOB` devolvía `NotFound` | Sustituir el marcador de ejemplo por el nombre real devuelto por Kubernetes. |
+| El clúster y el manifiesto diferían en `suspend` | Declarar explícitamente `suspend: false` en el archivo y comprobar también `DRY_RUN`. |
+| Avisos de `last-applied-configuration` al aplicar RBAC | Pasar los recursos existentes a gestión declarativa con `kubectl apply`; el aviso indicaba la anotación ausente. |
+| Riesgo de dejar un Service si falla una limpieza parcial | Añadir la fase v6 de recuperación de huérfanos, con expiración y comprobaciones antes de borrar. |
+| Riesgo de borrar un recurso cambiado durante la comprobación | Releer los recursos y usar precondiciones de UID y versión. |
+| `app-test-api` tenía TTL textual, pero no fecha de expiración | El limpiador lo conservó. Tener `ttl=30m` por sí solo no permite calcular de forma fiable la caducidad. |
+
+El `Jenkinsfile.operations` conserva mensajes antiguos que dicen que la limpieza automática está pendiente. Ya no describen el estado del clúster revisado: la autoridad para comprobarlo son el CronJob activo y sus logs. Corregir esos mensajes del pipeline queda pendiente; esta actualización modifica únicamente documentación.
+
+### 19.7 Qué falta por verificar o ampliar
+
+- Completar la prueba desatendida de extremo a extremo: crear un entorno nuevo desde Jenkins con TTL de 30 minutos y observar su eliminación por una ejecución programada de v6, sin adelantar manualmente la caducidad. Se han validado piezas y ejecuciones por separado; no se afirma aquí que esa prueba completa esté terminada.
+- Publicar los dos commits locales de v6 y activación y comprobar que GitHub y el clúster contienen la misma versión del script.
+- Añadir métricas, logs y alertas específicas del limpiador a la observabilidad ya existente, sin reinstalar Prometheus, Grafana o Loki.
+- Incorporar selección dinámica de imágenes y promoción DEV/STG mediante Git; estas funciones todavía no están en el menú de operaciones.
+- Documentar de forma declarativa la preparación completa de la credencial y permisos de Jenkins, que no se distribuyen con secretos.
+
+El máximo seleccionable es 24 horas, pero **no es un límite estricto al tiempo real de existencia**: la limpieza se produce en una ejecución posterior y puede retrasarse más si el clúster está apagado, el Job falla o falta la imagen. El CronJob evita solaparse consigo mismo, pero esa opción no impide que un usuario lance otros Jobs manuales.
+
+También siguen fuera de lo verificado la entrega de notificaciones por correo, la restauración de etcd y la reproducción de los experimentos de exposición de métricas del control plane.
 
 ## 20. Referencias
 
