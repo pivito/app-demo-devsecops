@@ -74,6 +74,40 @@ pipeline {
 
                         if (params.ACTION == 'CREATE_TEST') {
 
+                        def existingDeployment = sh(
+                            script: "kubectl get deployment ${deploymentName} -n ${env.KUBE_NAMESPACE} --ignore-not-found -o name",
+                            returnStdout: true
+                        ).trim()
+
+                        def existingService = sh(
+                            script: "kubectl get service ${deploymentName} -n ${env.KUBE_NAMESPACE} --ignore-not-found -o name",
+                            returnStdout: true
+                        ).trim()
+
+                        if (existingDeployment || existingService) {
+                            error "El entorno '${params.TEST_NAME}' ya existe. CREATE_TEST no permite sobrescribirlo."
+                        }
+
+
+
+                            def ttlSeconds = [
+                                '30m': 1800,
+                                '1h' : 3600,
+                                '2h' : 7200,
+                                '6h' : 21600,
+                                '12h': 43200,
+                                '24h': 86400
+                            ][params.TTL]
+
+
+                            def expiresAt = sh(
+                                script: "date -u -d '+${ttlSeconds} seconds' '+%Y-%m-%dT%H:%M:%SZ'",
+                                returnStdout: true
+                            ).trim()
+
+
+                            echo "Fecha de caducidad: ${expiresAt}"
+
                             def manifest = """
 apiVersion: apps/v1
 kind: Deployment
@@ -85,6 +119,7 @@ metadata:
     devsecops.io/test-name: ${params.TEST_NAME}
   annotations:
     devsecops.io/ttl: "${params.TTL}"
+    devsecops.io/expires-at: "${expiresAt}"
 spec:
   replicas: 1
   selector:

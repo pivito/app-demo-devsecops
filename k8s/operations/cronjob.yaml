@@ -1,0 +1,42 @@
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ephemeral-cleaner
+  namespace: lab-test-api
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 180
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: ephemeral-cleaner
+          restartPolicy: Never
+          containers:
+            - name: cleaner
+              image: ephemeral-cleaner:1.0
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: DRY_RUN
+                  value: "true"
+              volumeMounts:
+                - name: cleaner-script
+                  mountPath: /scripts
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+          volumes:
+            - name: cleaner-script
+              configMap:
+                name: ephemeral-cleaner-script
