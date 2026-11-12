@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="380" viewBox="0 0 1200 380" role="img" aria-labelledby="title desc">
+  <title id="title">DevSecOps Lab — aprende construyendo</title>
+  <desc id="desc">Manual práctico de integración continua, Kubernetes, GitOps y observabilidad. Código, validación, despliegue y observación.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#0b1224"/><stop offset="1" stop-color="#172946"/></linearGradient>
+    <linearGradient id="accent"><stop stop-color="#36e0bd"/><stop offset="1" stop-color="#70b7ff"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#a8c5f7" stroke-opacity=".06"/></pattern>
+  </defs>
+  <rect width="1200" height="380" rx="24" fill="url(#bg)"/>
+  <rect width="1200" height="380" rx="24" fill="url(#grid)"/>
+  <circle cx="1080" cy="65" r="180" fill="#3a8cff" opacity=".06"/>
+  <circle cx="1150" cy="360" r="210" fill="#36e0bd" opacity=".04"/>
+  <rect x="48" y="42" width="198" height="28" rx="14" fill="#36e0bd" opacity=".12"/>
+  <text x="64" y="61" font-family="Segoe UI,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="2" fill="#77ead3">MANUAL · PASO A PASO</text>
+  <text x="48" y="145" font-family="Segoe UI,Arial,sans-serif" font-size="64" font-weight="750" letter-spacing="-2" fill="#f1f6ff">DevSecOps Lab</text>
+  <text x="51" y="185" font-family="Segoe UI,Arial,sans-serif" font-size="23" fill="#b7cae3">Aprende construyendo. Desde el código hasta la operación.</text>
+  <g font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="600" text-anchor="middle">
+    <g fill="#192f49" stroke="#34516f"><rect x="50" y="214" width="91" height="30" rx="15"/><rect x="151" y="214" width="106" height="30" rx="15"/><rect x="267" y="214" width="93" height="30" rx="15"/><rect x="370" y="214" width="134" height="30" rx="15"/><rect x="514" y="214" width="119" height="30" rx="15"/></g>
+    <g fill="#d7e6fa"><text x="95" y="234">Jenkins</text><text x="204" y="234">Kubernetes</text><text x="313" y="234">Argo CD</text><text x="437" y="234">Grafana + Loki</text><text x="573" y="234">PostgreSQL</text></g>
+  </g>
+  <path d="M70 307H1115" stroke="#34516f" stroke-width="2"/>
+  <path d="M70 307H1115" stroke="url(#accent)" stroke-width="2" opacity=".7"/>
+  <g font-family="Segoe UI,Arial,sans-serif" font-size="13" font-weight="600">
+    <g fill="#36e0bd"><circle cx="70" cy="307" r="6"/><circle cx="375" cy="307" r="6"/><circle cx="685" cy="307" r="6"/><circle cx="995" cy="307" r="6"/></g>
+    <g fill="#c2d4ea"><text x="50" y="342">01 / CÓDIGO</text><text x="355" y="342">02 / VALIDACIÓN</text><text x="665" y="342">03 / DESPLIEGUE</text><text x="975" y="342">04 / OBSERVACIÓN</text></g>
+  </g>
+  <g transform="translate(940 106)" fill="none" stroke="#79baff" stroke-width="2">
+    <path d="M0 30 52 0 104 30 104 90 52 120 0 90Z" fill="#213c5a"/>
+    <path d="m0 30 52 30 52-30M52 60v60"/>
+    <path d="m-47 83 27-16 27 16v32l-27 16-27-16Z" fill="#173344" stroke="#65dcc6"/>
+    <path d="m118-10 20-12 20 12v24l-20 12-20-12Z" fill="#173344" stroke="#65dcc6"/>
+  </g>
+</svg>

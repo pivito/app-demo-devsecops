@@ -1,6 +1,39 @@
+<div align="center">
+
+![DevSecOps Lab: manual práctico paso a paso](docs/assets/lab-cover.svg)
+
 # Manual del laboratorio DevSecOps
 
+**Un laboratorio local. Todo el recorrido: construir, proteger, desplegar y observar.**
+
+![Nivel: principiantes](https://img.shields.io/badge/Nivel-Principiantes-36bfa5?style=flat-square)
+![Plataforma: Windows y WSL2](https://img.shields.io/badge/Plataforma-Windows%20%2B%20WSL2-3675b9?style=flat-square)
+![Contenido: 20 temas](https://img.shields.io/badge/Contenido-20%20temas-6d62c4?style=flat-square)
+
+[Comenzar la práctica](#3-preparar-windows-y-ubuntu) · [Última actualización](#19-actualización-jenkins-y-entornos-efímeros) · [Resolver un problema](#17-dificultades-y-soluciones)
+
+</div>
+
+> [!TIP]
+> **¿Es tu primer laboratorio?** Sigue los temas en orden y comprueba el resultado de cada paso antes de continuar. Los comandos de Windows y Ubuntu están identificados en cada bloque.
+
+---
+
 ## Índice
+
+### Tu ruta de aprendizaje
+
+| Etapa | Qué vas a conseguir | Temas |
+| :--- | :--- | :---: |
+| 🧭 **Preparar** | Entender las piezas y dejar listo tu equipo | [01–04](#1-objetivo-y-alcance) |
+| 🛠️ **Construir y proteger** | Crear el clúster, probar la aplicación y configurar CI | [05–08](#5-crear-kubernetes-con-kind) |
+| 🚀 **Desplegar** | Separar DEV/STG con GitOps y escalar la aplicación | [09–10](#9-desplegar-con-argo-cd-y-kustomize) |
+| 📊 **Observar** | Consultar métricas, analizar logs y detectar errores | [11–13](#11-prometheus-y-grafana) |
+| 💾 **Conservar y recuperar** | Trabajar con volúmenes, PostgreSQL y backups | [14–15](#14-almacenamiento-persistente) |
+| ⚙️ **Operar y automatizar** | Consultar con MCP, resolver incidentes y gestionar TTL | [16–20](#16-acceso-mcp-de-solo-lectura) |
+
+<details>
+<summary><strong>Ver el índice completo · 20 temas</strong></summary>
 
 1. [Objetivo y alcance](#1-objetivo-y-alcance)
 2. [Conceptos básicos](#2-conceptos-básicos)
@@ -23,25 +56,54 @@
 19. [Actualización: Jenkins y entornos efímeros](#19-actualización-jenkins-y-entornos-efímeros)
 20. [Referencias](#20-referencias)
 
+</details>
+
+---
+
 ## 1. Objetivo y alcance
 
 Construiremos un entorno local para probar una aplicación, analizar su calidad y seguridad, publicar una imagen y desplegarla en Kubernetes. Después aprenderemos a consultar métricas y logs, detectar errores y recuperar datos.
 
 El recorrido es:
 
-```text
-Código en GitHub → Jenkins → tests → SonarQube → Trivy
-                 → BuildKit → análisis de imagen → GHCR
-Git con manifiestos Kustomize → Argo CD → Kubernetes DEV / STG
-Aplicación → logs JSON → Alloy → Loki → Grafana
-Kubernetes → Prometheus → Grafana / Alertmanager
+```mermaid
+flowchart TD
+    subgraph CI["01 · Construir y proteger"]
+        code["Código en GitHub"] --> jenkins["Jenkins · tests"]
+        jenkins --> quality["SonarQube + Trivy"]
+        quality --> build["BuildKit + análisis de imagen"]
+        build --> registry["Imagen en GHCR"]
+    end
+    subgraph CD["02 · Desplegar con GitOps"]
+        manifests["Git · Kustomize y digest revisado"] --> argo["Argo CD"]
+        argo --> dev["DEV"]
+        argo --> stg["STG"]
+    end
+    registry -. "Promoción mediante un cambio en Git" .-> manifests
+    subgraph OBS["03 · Observar"]
+        logs["Logs JSON → Alloy → Loki"] --> grafana["Grafana"]
+        metrics["Kubernetes → Prometheus"] --> grafana
+        metrics --> alerts["Alertmanager"]
+    end
+    dev --> logs
+    stg --> logs
+    dev --> metrics
+    stg --> metrics
+    classDef teal fill:#103b36,stroke:#36bfa5,color:#effffb
+    classDef blue fill:#193555,stroke:#70b7ff,color:#f1f6ff
+    classDef purple fill:#32254f,stroke:#b39be8,color:#faf5ff
+    class code,jenkins,quality,build,registry teal
+    class manifests,argo,dev,stg blue
+    class logs,metrics,grafana,alerts purple
 ```
 
 Este manual se elaboró el **10 de noviembre de 2026** y se actualizó el **12 de noviembre de 2026** a partir de los archivos reales de `~/laboratorios/devsecops`, consultas de estado del clúster y el historial disponible. Los comandos de instalación son instrucciones para el lector: no se han reinstalado componentes ni ejecutado ejercicios destructivos al escribir el documento. La última actualización incorpora el pipeline de operaciones de Jenkins y las pruebas del limpiador automático de entornos efímeros; consulta el tema 19.
 
 Se incluyen configuraciones revisadas en [materiales](materiales/). El código de la aplicación se obtiene de GitHub. No se distribuyen contraseñas, tokens, kubeconfigs administrativos, bases de datos ni cachés. Los experimentos antiguos de correo y las copias de manifiestos internos del control plane no forman parte del recorrido de instalación: no hay evidencia suficiente para reproducir su resultado con seguridad. El menú de operaciones y el limpiador TTL ya tienen implementación; todavía quedan comprobaciones y mejoras indicadas en el tema 19.
 
-### Estado y versiones observados
+<details>
+<summary><strong>📦 Consultar versiones y configuración del entorno</strong></summary>
+
 
 | Componente | Versión o configuración observada |
 |---|---|
@@ -56,6 +118,12 @@ Se incluyen configuraciones revisadas en [materiales](materiales/). El código d
 | Chart de Alloy | 1.14.2 |
 
 Estas son versiones registradas del entorno, no una garantía de compatibilidad con cualquier equipo. Algunas imágenes originales usan etiquetas móviles (`latest`, `community`, `lts-jdk21`); para conservar exactamente una ejecución hay que registrar también sus digests y la versión de Kubernetes del clúster.
+
+</details>
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 2. Conceptos básicos
 
@@ -75,6 +143,10 @@ Estas son versiones registradas del entorno, no una garantía de compatibilidad 
 | HPA | Ajusta el número de réplicas en función de métricas. |
 
 Los bloques `powershell` se ejecutan en Windows. Los bloques `bash`, en Ubuntu WSL2. No copies el indicador `$` de una terminal. En los bloques YAML se indica cómo guardar o aplicar el contenido. `Ctrl+C` detiene un servidor o un reenvío de puertos, pero no elimina la aplicación del clúster.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 3. Preparar Windows y Ubuntu
 
@@ -104,6 +176,10 @@ helm version --short
 ```
 
 Si falta una herramienta, instálala mediante sus instrucciones oficiales del apartado de referencias. Node debe ser de la rama 22 para seguir este laboratorio. `docker version` debe mostrar también el servidor: si solo aparece el cliente, comprueba Docker antes de continuar.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 4. Organizar los archivos
 
@@ -138,6 +214,10 @@ Para publicar cambios propios, crea un fork y utiliza su URL y tu usuario de GHC
 
 Cada terminal nueva necesita de nuevo `export LAB_ROOT="$HOME/laboratorios/devsecops"`, o usar las rutas completas con `~` que aparecen en los ejemplos.
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 5. Crear Kubernetes con kind
 
 ```bash
@@ -153,6 +233,10 @@ kubectl get storageclass
 ```
 
 Resultado esperado: tres nodos `Ready` y una clase de almacenamiento `standard`. Si un pod está arrancando, espera y repite la consulta. Para investigar un fallo usa `kubectl describe pod NOMBRE -n NAMESPACE` y revisa los eventos al final.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 6. Ejecutar y probar la aplicación
 
@@ -182,6 +266,10 @@ docker run --rm --name app-demo-local -p 127.0.0.1:3000:3000 app-demo:local
 ```
 
 El Dockerfile tiene dos etapas y ejecuta la aplicación con el usuario `node`.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 7. Levantar Jenkins y SonarQube
 
@@ -217,6 +305,10 @@ docker compose exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
 Completa el asistente de Jenkins y crea tu usuario. Inicializa SonarQube y cambia su contraseña inicial. Si SonarQube no arranca, consulta sus logs; un error de `vm.max_map_count` debe resolverse en el host Linux que ejecuta Docker, siguiendo los requisitos de SonarQube.
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 8. Configurar el pipeline de seguridad
 
 En **Manage Jenkins**, instala los plugins necesarios para Pipeline, Git, NodeJS y SonarQube Scanner. Los nombres de las herramientas deben coincidir exactamente con el `Jenkinsfile`:
@@ -247,6 +339,10 @@ Las etapas reales son:
 Un fallo del análisis debe investigarse en el informe: actualiza dependencias o la imagen base y vuelve a ejecutar. No elimines el control de seguridad para obtener una ejecución verde.
 
 **Límite del pipeline actual:** publica la imagen, pero no actualiza automáticamente los digests de Kustomize. El siguiente paso de promoción sigue siendo un cambio revisado en Git.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 9. Desplegar con Argo CD y Kustomize
 
@@ -361,6 +457,10 @@ kubectl -n argocd get application app-demo-dev
 
 Argo CD debe llegar a `Synced` y `Healthy`. Para promocionar, cambia explícitamente el digest de STG y revisa ese cambio. Para volver atrás, revierte en Git el commit que cambió la imagen y publícalo; no uses `kubectl set image` como procedimiento normal, porque `Self Heal` puede deshacerlo.
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 10. Métricas y escalado automático
 
 El HPA necesita Metrics Server. En un clúster nuevo, instala la versión observada:
@@ -382,6 +482,10 @@ kubectl -n kube-system patch deployment metrics-server --type=json \
 ```
 
 El ajuste desactiva esa validación TLS; no debe trasladarse automáticamente a producción. El HPA usa CPU respecto al `request` de 50m, con objetivo del 50 %. Una petición aislada puede no generar carga suficiente para escalar. Las métricas pueden tardar en aparecer tras arrancar.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 11. Prometheus y Grafana
 
@@ -413,6 +517,10 @@ kubectl -n monitoring port-forward svc/monitoring-kube-prometheus-prometheus 909
 
 Abre http://localhost:9090 y comprueba targets y métricas. El archivo `monitoring/alerts/app-demo-alerts.yaml` contiene una regla histórica para el namespace `app-demo`. Para usarla en DEV, copia el archivo, cambia su nombre de recurso y su selector a `app-demo-dev`, y aplícala con `kubectl apply -f RUTA_DEL_ARCHIVO`. Aplicar el original sin adaptarlo vigilaría el entorno antiguo.
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 12. Logs con Alloy y Loki
 
 ```bash
@@ -442,6 +550,10 @@ Pulsa **Save & test**. Esa dirección se usa desde Grafana dentro de Kubernetes;
 ```
 
 Genera peticiones a DEV y comprueba que aparecen logs recientes. Si no aparecen, verifica el rango temporal, el namespace, los pods de Alloy y la conectividad con el gateway.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 13. Dashboard y alerta de errores HTTP
 
@@ -496,6 +608,10 @@ Durante la prueba se esperan respuestas 500. Revisa el pico del panel y la trans
 
 El historial confirma la visualización del pico en el dashboard y la configuración guiada de la regla. No hay una evidencia adjunta de todo el ciclo `Normal → Firing → Normal`; compruébalo como parte del ejercicio.
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 14. Almacenamiento persistente
 
 ```bash
@@ -520,6 +636,10 @@ kubectl -n storage-lab exec storage-test -- cat /datos/prueba.txt
 El archivo debe seguir ahí. Un PVC no es una copia de seguridad: kind almacena estos datos dentro del entorno local de sus nodos y perder el clúster puede perderlos.
 
 Los archivos `pvc-recuperada.yaml` y `pod-recuperado.yaml` documentan una recuperación anterior. **No apliques directamente el PVC recuperado:** contiene un `volumeName` concreto del equipo original. Para practicar recuperación necesitas identificar tu PV, configurar previamente `Retain`, entender su `claimRef` y adaptar el manifiesto. Esta operación se deja como ejercicio avanzado, porque puede afectar al vínculo con los datos.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 15. PostgreSQL y copias de seguridad
 
@@ -587,6 +707,10 @@ kubectl -n postgres-lab exec postgres-0 -- \
 
 Si `laboratorio_restauracion` ya existe, elige otra base nueva y usa su nombre en los comandos. No sobrescribas la original. Conserva una copia adicional fuera de los nodos de kind: el PVC de backups tampoco protege frente a perder el clúster completo.
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 16. Acceso MCP de solo lectura
 
 El material incluye un ServiceAccount, Role y RoleBinding limitados al namespace histórico `app-demo`. Permiten consultar recursos y logs; no permiten modificar recursos ni leer Secrets. No dan acceso automáticamente a DEV o STG.
@@ -603,6 +727,10 @@ kubectl auth can-i delete pods -n app-demo \
 Se espera `yes` para listar y `no` para eliminar. Para otros namespaces hay que diseñar sus bindings de forma explícita.
 
 El script `mcp-kubernetes/scripts/renew-token.sh` genera un token solicitado por 24 horas y un kubeconfig reducido. Antes de usarlo, cambia sus rutas fijas `/home/migue/...` por las de tu usuario, crea el directorio `config` y revisa el resultado. Mantiene solo el usuario y contexto del ServiceAccount, pero contiene un token sensible. No se incluyen el kubeconfig ni la configuración del cliente MCP del autor. La conexión al cliente queda pendiente de configurar en cada equipo; la caducidad efectiva del token depende del servidor.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 17. Dificultades y soluciones
 
@@ -672,6 +800,10 @@ Los casos siguientes son consejos de diagnóstico; no se presentan como fallos q
 | No llega un correo | Envío no validado en este manual; no confundir `Firing` con entrega de notificación. |
 | Cambios manuales desaparecen | Revisar `Self Heal`; hacer el cambio persistente en Git. |
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 18. Operación diaria y comprobación final
 
 Al comenzar:
@@ -737,7 +869,14 @@ docker compose start
 
 No uses `docker compose down -v` ni `kind delete cluster` como rutina para apagar: eliminan recursos y pueden hacerte perder datos. Exporta primero lo que quieras conservar.
 
+[↑ Volver al índice](#índice)
+
+---
+
 ## 19. Actualización: Jenkins y entornos efímeros
+
+> [!NOTE]
+> **Actualización del 12 de noviembre de 2026.** Jenkins ya permite operar entornos de prueba y el limpiador TTL tiene ejecuciones automáticas verificadas. Al final del tema se detallan las comprobaciones pendientes.
 
 ### 19.1 Qué hemos realizado — 12 de noviembre de 2026
 
@@ -888,6 +1027,10 @@ El `Jenkinsfile.operations` conserva mensajes antiguos que dicen que la limpieza
 El máximo seleccionable es 24 horas, pero **no es un límite estricto al tiempo real de existencia**: la limpieza se produce en una ejecución posterior y puede retrasarse más si el clúster está apagado, el Job falla o falta la imagen. El CronJob evita solaparse consigo mismo, pero esa opción no impide que un usuario lance otros Jobs manuales.
 
 También siguen fuera de lo verificado la entrega de notificaciones por correo, la restauración de etcd y la reproducción de los experimentos de exposición de métricas del control plane.
+
+[↑ Volver al índice](#índice)
+
+---
 
 ## 20. Referencias
 
